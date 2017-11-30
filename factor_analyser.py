@@ -7,10 +7,13 @@ from sklearn.model_selection import TimeSeriesSplit
 from sklearn.preprocessing import MinMaxScaler
 from sklearn import linear_model, model_selection
 
+from po.PO import Relation
+
 
 class FactorAnalyser(object):
-    __factor_index_id = []
     __target = []
+    __factor_index_id = []
+    __level_two_factor_id = {}  # {'index1':[index1-a,index1-b],'index2':[index2-a,index2-b]}
 
     def analyse(self, period, init):
         '''
@@ -21,7 +24,8 @@ class FactorAnalyser(object):
         '''
         data = self.__get_data_by_period(period)
         dic = self.__modeling(data)
-        self.__save_result(dic, init)
+        list = self.__save_result(dic, period, init)
+        list_parent,list_root = self.__save_second_level(period, init)
 
     def __get_data_from_csv(self, path=r'./data/raw_data.csv'):
         '''
@@ -98,8 +102,42 @@ class FactorAnalyser(object):
         # sorted_named_scores = sorted(named_scores, key=lambda influence: influence[1], reverse=True)
         return dict(named_scores)
 
-    def __save_result(self, dic, init):
-        raise NotImplementedError
+    def __save_result(self, dic, period, init):
+        list = []
+        for key, value in dic.iteritems():
+            r = Relation()
+            r.index_pk_id = key
+            r.influence_factor = value
+            r.parent_pk_id = self.__target[0]
+            r.op_time = period
+            r.distance = 1
+            r.is_leaf = 0
+            list.append(r)
+        return list
+
+    def __save_second_level(self, period, init):
+        list_parent = []  # 和父节点
+        list_root_second = []  # 和根节点
+        for key, value in self.__level_two_factor_id.iteritems():
+            for v in value:
+                r = Relation()
+                r.index_pk_id = v
+                r.influence_factor = None
+                r.parent_pk_id = key
+                r.op_time = period
+                r.distance = 1
+                r.is_leaf = 1
+                list_parent.append(r)
+
+                root = Relation()
+                root.index_pk_id = v
+                root.influence_factor = None
+                root.parent_pk_id = self.__target[0]
+                root.op_time = period
+                root.distance = 2
+                root.is_leaf = 1
+                list_root_second.append(root)
+        return list_parent,list_root_second
 
 
 class BillUserAnalyser(FactorAnalyser):

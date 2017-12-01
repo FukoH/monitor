@@ -8,12 +8,14 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn import linear_model, model_selection
 
 from po.PO import Relation
+from DB.DBConnector import DBConnector
 
 
 class FactorAnalyser(object):
     __target = []
     __factor_index_id = []
     __level_two_factor_id = {}  # {'index1':[index1-a,index1-b],'index2':[index2-a,index2-b]}
+    connector = DBConnector()
 
     def analyse(self, period, init):
         '''
@@ -26,6 +28,8 @@ class FactorAnalyser(object):
         dic = self.__modeling(data)
         list = self.__save_result(dic, period, init)
         list_parent,list_root = self.__save_second_level(period, init)
+        list.extend(list_parent).extend(list_root)
+        self.__class__.connector.add_data(list)
 
     def __get_data_from_csv(self, path=r'./data/raw_data.csv'):
         '''

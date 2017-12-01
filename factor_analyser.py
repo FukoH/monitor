@@ -24,10 +24,14 @@ class FactorAnalyser(object):
         :param init: 是否第一次初始化
         :return:
         '''
+        # load data
         data = self.__get_data_by_period(period)
+        # predict
+        self.__predict(data,init)
+        # calculate factor
         dic = self.__modeling(data)
         list = self.__save_result(dic, period, init)
-        list_parent,list_root = self.__save_second_level(period, init)
+        list_parent, list_root = self.__save_second_level(period, init)
         list.extend(list_parent).extend(list_root)
         self.__class__.connector.add_data(list)
 
@@ -59,6 +63,11 @@ class FactorAnalyser(object):
         series = output[output['OP_TIME'] <= period & output['OP_TIME'] >= 201303]
         series.interplorate()
         return series
+
+    def __predict(self,data,init):
+        self.__predict_by_model(data,init)
+        self.__add_to_database(init)
+
 
     def __modeling(self, data):
         '''
@@ -141,7 +150,15 @@ class FactorAnalyser(object):
                 root.distance = 2
                 root.is_leaf = 1
                 list_root_second.append(root)
-        return list_parent,list_root_second
+        return list_parent, list_root_second
+
+    def __predict_by_model(self, data, init):
+        if(init):
+            pass
+
+
+    def __add_to_database(self, init):
+        pass
 
 
 class BillUserAnalyser(FactorAnalyser):

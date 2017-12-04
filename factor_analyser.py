@@ -4,8 +4,14 @@
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import TimeSeriesSplit
-from sklearn.preprocessing import MinMaxScaler
 from sklearn import linear_model, model_selection
+import sys
+import math
+from keras.models import Sequential
+from keras.layers import Dense
+from keras.layers import LSTM
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.metrics import mean_squared_error
 
 from po.PO import Relation
 from DB.DBConnector import DBConnector
@@ -25,11 +31,11 @@ class FactorAnalyser(object):
         :return:
         '''
         # load data
-        data = self.__get_data_by_period(period)
+        first_level_data, second_level_data = self.__get_data_by_period(period)
         # predict
-        self.__predict(data,init)
+        self.__predict(second_level_data, init)
         # calculate factor
-        dic = self.__modeling(data)
+        dic = self.__modeling(first_level_data)
         list = self.__save_result(dic, period, init)
         list_parent, list_root = self.__save_second_level(period, init)
         list.extend(list_parent).extend(list_root)
@@ -43,15 +49,27 @@ class FactorAnalyser(object):
         '''
         raw_data = pd.read_csv(path)
         raw_data['OP_TIME'].astype('int')
-        model_data = raw_data[['OP_TIME', 'INDEX_ID', 'INDEX_VALUE']][
-            raw_data['INDEX_ID'].isin(self.__class__.__factor_index_id)]
+        # model_data = raw_data[['OP_TIME', 'INDEX_ID', 'INDEX_VALUE']][
+        #     raw_data['INDEX_ID'].isin(self.__class__.__factor_index_id)]
         output = raw_data[['OP_TIME', 'INDEX_VALUE']][raw_data['INDEX_ID'].isin(self.__class__.__target)]
         output.columns = ['OP_TIME', self.__class__.__target[0]]
         for column in self.__class__.__factor_index_id:
             short = raw_data[['OP_TIME', 'INDEX_ID', 'INDEX_VALUE']][raw_data['INDEX_ID'].isin([list(column)])]
             short.columns = ['OP_TIME', column]
             output.merge(short, how='outer', on='OP_TIME')
-        return output
+        first_level_data = output
+        index_set = set()
+        for v in self.__class__.__level_two_factor_id.values():
+            for index in v:
+                index_set.add(index)
+        # second_level = raw_data[['OP_TIME', 'INDEX_VALUE']][raw_data['INDEX_ID'].isin(list(index_set).append('OP_TIME'))]
+        # index_list = list(index_set)
+        for column in index_set:
+            short = raw_data[['OP_TIME', 'INDEX_ID', 'INDEX_VALUE']][raw_data['INDEX_ID'].isin([list(column)])]
+            short.columns = ['OP_TIME', column]
+            output.merge(short, how='outer', on='OP_TIME')
+        second_level_data = output
+        return first_level_data, second_level_data
 
     def __get_data_by_period(self, period):
         '''
@@ -59,15 +77,16 @@ class FactorAnalyser(object):
         :param period:  生成哪个期间的数据
         :return:
         '''
-        output = self.__get_data_from_csv()
-        series = output[output['OP_TIME'] <= period & output['OP_TIME'] >= 201303]
-        series.interplorate()
-        return series
+        first_level, second_level = self.__get_data_from_csv()
+        fisrst_level_series = first_level[first_level['OP_TIME'] <= period & first_level['OP_TIME'] >= 201303]
+        second_level_series = second_level[second_level['OP_TIME'] <= period & second_level['OP_TIME'] >= 201303]
+        fisrst_level_series.interplorate()
+        second_level_series.interplorate()
+        return fisrst_level_series, second_level_series
 
-    def __predict(self,data,init):
-        self.__predict_by_model(data,init)
+    def __predict(self, data, init):
+        self.__predict_by_model(data, init)
         self.__add_to_database(init)
-
 
     def __modeling(self, data):
         '''
@@ -153,9 +172,77 @@ class FactorAnalyser(object):
         return list_parent, list_root_second
 
     def __predict_by_model(self, data, init):
-        if(init):
-            pass
+        if (init):
+            return data
+        else:
+            self.__predict_by_LSTM(data)
 
+    def __predict_by_LSTM(self, data):
+        sys.setrecursionlimit(1048576)
+        """
+        载入指定路径的数据，usecols=[1] 读取第二列
+        """
+        # 取dataframe中的数值
+        dataset = data.values
+        # 将数值类型转换成浮点型
+        dataset = dataset.astype('float32')
+
+        """
+        定义一个array的值转换成矩阵的函数
+        """
+
+        def create_dataset(dataset, look_back=1):
+            dataX, dataY = [], []
+            for i in range(len(dataset) - look_back - 1):
+                a = dataset[i:(i + look_back), 0]
+                dataX.append(a)
+                dataY.append(dataset[i + look_back, 0])
+            return np.array(dataX), np.array(dataY)
+
+        # 标准化数据
+        scaler = MinMaxScaler(feature_range=(0, 1))
+        dataset = scaler.fit_transform(dataset[:-1])
+
+        """
+        分隔训练集和测试集合
+        """
+
+        # split into train and test sets
+        # size_a=0.67
+
+        # from set_train_size import size_b
+
+        train_size = int(len(dataset) - 1)
+        train, test = dataset[0:train_size, :], dataset[train_size:len(dataset), :]
+
+        """
+        将数据转换成模型需要的形状，X=t and Y=t+1
+        """
+        look_back = 1
+        # from set_super_parameter import look_back
+        trainX, trainY = create_dataset(train, look_back)
+        # testX, testY = create_dataset(test, look_back)
+        """
+        将数据转换成模型需要的形状，[样本samples,时间步 time steps, 特征features]
+        """
+        trainX = np.reshape(trainX, (trainX.shape[0], 1, trainX.shape[1]))
+        # testX = numpy.reshape(testX, (testX.shape[0], 1, testX.shape[1]))
+        # textX = numpt.
+        """
+        搭建LSTM神经网络
+        """
+        sample = 4
+        nb_epoch = 100
+        optimizer = 'adam'
+        model = Sequential()
+        # model.add(Dense(sample,input_shape=(look_back,)))
+        model.add(LSTM(sample, input_dim=look_back))
+        # model.add(layers.Dropout(0.01))
+        model.add(Dense(1))
+        model.compile(loss='mean_squared_error', optimizer=optimizer)
+        model.fit(trainX, trainY, nb_epoch=nb_epoch, batch_size=1, verbose=2)
+        predict_value = model.predict(np.asarray(dataset[-1]).reshape(1,1,1))
+        return predict_value
 
     def __add_to_database(self, init):
         pass

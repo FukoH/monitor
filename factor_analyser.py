@@ -6,13 +6,12 @@ import numpy as np
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn import linear_model, model_selection
 import sys
-import math
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import LSTM
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.metrics import mean_squared_error
 
+from po.PO import MainData, IndexDef
 from po.PO import Relation
 from DB.DBConnector import DBConnector
 
@@ -33,7 +32,7 @@ class FactorAnalyser(object):
         # load data
         first_level_data, second_level_data = self.__get_data_by_period(period)
         # predict
-        self.__predict(second_level_data, init)
+        self.__predict(second_level_data, period,init)
         # calculate factor
         dic = self.__modeling(first_level_data)
         list = self.__save_result(dic, period, init)
@@ -84,9 +83,42 @@ class FactorAnalyser(object):
         second_level_series.interplorate()
         return fisrst_level_series, second_level_series
 
-    def __predict(self, data, init):
-        self.__predict_by_model(data, init)
-        self.__add_to_database(init)
+    def __predict(self, data,period, init):
+        columns = data.columns
+        maindata_list  = []
+        for column in columns:
+            df = data[['OP_TIME',column]]
+            result = self.__predict_by_model(df, init)
+            if not init:
+                ME = self.__get_me(df,result)
+                maindata = MainData()
+                maindata.index_pk_id = self.connector.session.query(IndexDef).filter_by(index_name="column").one().index_id
+                maindata.op_time=period
+                maindata.true_value = df[column].loc[df['OP_TIME'] ==str(int(period) -1)].item()
+                maindata.predict_value = result.item()
+                maindata.upper_bound = result.item() + ME
+                maindata.lower_bound = result.item() - ME
+                if maindata.true_value > maindata.upper_bound:
+                    maindata.description = '>上限值'
+                    maindata.is_abnormal = 1
+                elif maindata.true_value < maindata.lower_bound:
+                    maindata.description = '<下限值'
+                    maindata.is_abnormal = 1
+                else:
+                    maindata.description = '预测区间内'
+                    maindata.is_abnormal = 0
+                maindata_list.append(maindata)
+            else:
+                for index, row in df.iterrows():
+                    # print(row['name'], row['score'])
+                    maindata = MainData()
+                    maindata.index_pk_id = self.connector.session.query(IndexDef).filter_by(index_name="column").one().index_id
+                    maindata.op_time = row['OP_TIME']
+                    maindata.true_value = df[column]
+                    maindata_list.append(maindata)
+            # return maindata_list
+
+            self.__add_to_database(maindata_list, init)
 
     def __modeling(self, data):
         '''
@@ -175,7 +207,7 @@ class FactorAnalyser(object):
         if (init):
             return data
         else:
-            self.__predict_by_LSTM(data)
+            return self.__predict_by_LSTM(data)
 
     def __predict_by_LSTM(self, data):
         sys.setrecursionlimit(1048576)
@@ -202,15 +234,6 @@ class FactorAnalyser(object):
         # 标准化数据
         scaler = MinMaxScaler(feature_range=(0, 1))
         dataset = scaler.fit_transform(dataset[:-1])
-
-        """
-        分隔训练集和测试集合
-        """
-
-        # split into train and test sets
-        # size_a=0.67
-
-        # from set_train_size import size_b
 
         train_size = int(len(dataset) - 1)
         train, test = dataset[0:train_size, :], dataset[train_size:len(dataset), :]
@@ -241,11 +264,19 @@ class FactorAnalyser(object):
         model.add(Dense(1))
         model.compile(loss='mean_squared_error', optimizer=optimizer)
         model.fit(trainX, trainY, nb_epoch=nb_epoch, batch_size=1, verbose=2)
-        predict_value = model.predict(np.asarray(dataset[-1]).reshape(1,1,1))
+        predict_value = model.predict(np.asarray(dataset[-1]).reshape(1, 1, 1))
         return predict_value
 
-    def __add_to_database(self, init):
-        pass
+    def __add_to_database(self, result, init):
+        self.connector.add_data(result)
+        # if init:
+        #     pass
+        # else:
+        #     maindata = MainData()
+        #     # maindata.index_pk_id =
+
+    def __get_me(self, df,prediction):
+        return prediction * 0.1
 
 
 class BillUserAnalyser(FactorAnalyser):

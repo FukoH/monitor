@@ -22,11 +22,12 @@ class DBConnector:
         # 创建新User对象:
         # new_user = User(id='5', name='Bob')
         # 添加到session:
-        self.session.add(data)
+        # self.session.add(data)
+        self.session.bulk_save_objects(data)
         # 提交即保存到数据库:
         self.session.commit()
         # 关闭session:
-        self.session.close()
+        # self.session.close()
 
 
         # def update_data(self,_class,data):

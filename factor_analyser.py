@@ -100,7 +100,7 @@ class FactorAnalyser(object):
                 maindata = MainData()
                 #maindata.index_pk_id = self.connector.session.query(IndexDef).filter_by(
                     #index_name="column").one().index_id
-                maindata.index_pk_id = column
+                maindata.index_id = column
                 maindata.op_time = period
                 maindata.true_value = df[column].loc[df['OP_TIME'] == str(int(period) - 1)].item()
                 maindata.predict_value = result.item()
@@ -122,7 +122,7 @@ class FactorAnalyser(object):
                     maindata = MainData()
                     #maindata.index_pk_id = self.connector.session.query(IndexDef).filter_by(
                        # index_name="column").one().index_id
-                    maindata.index_pk_id = column
+                    maindata.index_id = column
                     maindata.op_time = str(row['OP_TIME'])[:-2]
                     maindata.true_value = float(row[column])
                     maindata_list.append(maindata)
@@ -180,9 +180,9 @@ class FactorAnalyser(object):
         _list = []
         for key, value in dic.iteritems():
             r = Relation()
-            r.index_pk_id = key
+            r.index_id = key
             r.influence_factor = value
-            r.parent_pk_id = self._target[0]
+            r.parent_id = self._target[0]
             r.op_time = period
             r.distance = 1
             r.is_leaf = 0
@@ -195,18 +195,18 @@ class FactorAnalyser(object):
         for key, value in self._level_two_factor_id.iteritems():
             for v in value:
                 r = Relation()
-                r.index_pk_id = v
+                r.index_id = v
                 r.influence_factor = None
-                r.parent_pk_id = key
+                r.parent_id = key
                 r.op_time = period
                 r.distance = 1
                 r.is_leaf = 1
                 list_parent.append(r)
 
                 root = Relation()
-                root.index_pk_id = v
+                root.index_id = v
                 root.influence_factor = None
-                root.parent_pk_id = self._target[0]
+                root.parent_id = self._target[0]
                 root.op_time = period
                 root.distance = 2
                 root.is_leaf = 1

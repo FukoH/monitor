@@ -25,7 +25,7 @@ class MainData(Base):
     __tablename__ = 'main_data'
 
     pk_id = Column(Integer, primary_key=True)
-    index_pk_id = Column(String(9), nullable=False)
+    index_id = Column(String(9), nullable=False)
     op_time = Column(String(6), nullable=False)
     true_value = Column(Float(32))
     predict_value = Column(Float(32))
@@ -43,8 +43,8 @@ class Relation(Base):
 
     pk_id = Column(Integer, primary_key=True)
     op_time = Column(String(6), nullable=False)
-    index_pk_id = Column(String(9), nullable=False)
-    parent_pk_id = Column(String(9), nullable=False)
+    index_id = Column(String(9), nullable=False)
+    parent_id = Column(String(9), nullable=False)
     distance = Column(Integer, nullable=False)
     is_leaf = Column(Integer, nullable=False)
     influence_factor = Column(Float(3))

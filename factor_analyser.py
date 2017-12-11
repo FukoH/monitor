@@ -17,9 +17,9 @@ from DB.DBConnector import DBConnector
 
 
 class FactorAnalyser(object):
-    __target = []
-    __factor_index_id = []
-    __level_two_factor_id = {}  # {'index1':[index1-a,index1-b],'index2':[index2-a,index2-b]}
+    _target = []
+    _factor_index_id = []
+    _level_two_factor_id = {}  # {'index1':[index1-a,index1-b],'index2':[index2-a,index2-b]}
     connector = DBConnector()
 
     def analyse(self, period, init):
@@ -32,13 +32,16 @@ class FactorAnalyser(object):
         # load data
         first_level_data, second_level_data = self.__get_data_by_period(period)
         # predict
-        self.__predict(second_level_data, period, init)
+        # self.__predict(second_level_data, period, init)
         # calculate factor
         dic = self.__modeling(first_level_data)
-        list = self.__save_result(dic, period, init)
+        _list = self.__save_result(dic, period, init)
         list_parent, list_root = self.__save_second_level(period, init)
-        list.extend(list_parent).extend(list_root)
-        self.__class__.connector.add_data(list)
+        if list_parent:
+            _list.extend(list_parent)
+        if list_root:
+            _list.extend(list_root)
+        self.connector.add_data(_list)
 
     def __get_data_from_csv(self, path=r'./data/raw_data.csv'):
         '''
@@ -49,24 +52,24 @@ class FactorAnalyser(object):
         raw_data = pd.read_csv(path,encoding = 'gbk')
         raw_data['OP_TIME'].astype('int')
         # model_data = raw_data[['OP_TIME', 'INDEX_ID', 'INDEX_VALUE']][
-        #     raw_data['INDEX_ID'].isin(self.__class__.__factor_index_id)]
-        output = raw_data[['OP_TIME', 'INDEX_VALUE']][raw_data['INDEX_ID'].isin(self.__class__.__target)]
-        output.columns = ['OP_TIME', self.__class__.__target[0]]
-        for column in self.__class__.__factor_index_id:
-            short = raw_data[['OP_TIME', 'INDEX_ID', 'INDEX_VALUE']][raw_data['INDEX_ID'].isin([list(column)])]
+        #     raw_data['INDEX_ID'].isin(self.__factor_index_id)]
+        output = raw_data[['OP_TIME', 'INDEX_VALUE']][raw_data['INDEX_ID'].isin(self._target)]
+        output.columns = ['OP_TIME', self._target[0]]
+        for column in self._factor_index_id:
+            short = raw_data[['OP_TIME', 'INDEX_VALUE']][raw_data['INDEX_ID'].isin([column])]
             short.columns = ['OP_TIME', column]
-            output.merge(short, how='outer', on='OP_TIME')
+            output = output.merge(short, how='outer', on='OP_TIME')
         first_level_data = output
         index_set = set()
-        for v in self.__class__.__level_two_factor_id.values():
+        for v in self._level_two_factor_id.values():
             for index in v:
                 index_set.add(index)
         # second_level = raw_data[['OP_TIME', 'INDEX_VALUE']][raw_data['INDEX_ID'].isin(list(index_set).append('OP_TIME'))]
         # index_list = list(index_set)
         for column in index_set:
-            short = raw_data[['OP_TIME', 'INDEX_ID', 'INDEX_VALUE']][raw_data['INDEX_ID'].isin([list(column)])]
+            short = raw_data[['OP_TIME','INDEX_VALUE']][raw_data['INDEX_ID'].isin([column])]
             short.columns = ['OP_TIME', column]
-            output.merge(short, how='outer', on='OP_TIME')
+            output = output.merge(short, how='outer', on='OP_TIME')
         second_level_data = output
         return first_level_data, second_level_data
 
@@ -76,24 +79,28 @@ class FactorAnalyser(object):
         :param period:  生成哪个期间的数据
         :return:
         '''
+        period = int(period)
         first_level, second_level = self.__get_data_from_csv()
-        fisrst_level_series = first_level[first_level['OP_TIME'] <= period & first_level['OP_TIME'] >= 201303]
-        second_level_series = second_level[second_level['OP_TIME'] <= period & second_level['OP_TIME'] >= 201303]
-        fisrst_level_series.interplorate()
-        second_level_series.interplorate()
+        fisrst_level_series = first_level[(first_level['OP_TIME'] <= period) & (first_level['OP_TIME'] >= 201303)]
+        second_level_series = second_level[(second_level['OP_TIME'] <= period) & (second_level['OP_TIME'] >= 201303)]
+        fisrst_level_series.interpolate()
+        second_level_series.interpolate()
         return fisrst_level_series, second_level_series
 
     def __predict(self, data, period, init):
+        data['OP_TIME'].astype('str')
         columns = data.columns
         maindata_list = []
+        columns = np.delete(columns,0)
         for column in columns:
-            df = data[['OP_TIME', column]]
+            df = data[['OP_TIME', column]]        
             result = self.__predict_by_model(df, init)
             if not init:
                 ME = self.__get_me(df, result)
                 maindata = MainData()
-                maindata.index_pk_id = self.connector.session.query(IndexDef).filter_by(
-                    index_name="column").one().index_id
+                #maindata.index_pk_id = self.connector.session.query(IndexDef).filter_by(
+                    #index_name="column").one().index_id
+                maindata.index_pk_id = column
                 maindata.op_time = period
                 maindata.true_value = df[column].loc[df['OP_TIME'] == str(int(period) - 1)].item()
                 maindata.predict_value = result.item()
@@ -113,10 +120,11 @@ class FactorAnalyser(object):
                 for index, row in df.iterrows():
                     # print(row['name'], row['score'])
                     maindata = MainData()
-                    maindata.index_pk_id = self.connector.session.query(IndexDef).filter_by(
-                        index_name="column").one().index_id
-                    maindata.op_time = row['OP_TIME']
-                    maindata.true_value = df[column]
+                    #maindata.index_pk_id = self.connector.session.query(IndexDef).filter_by(
+                       # index_name="column").one().index_id
+                    maindata.index_pk_id = column
+                    maindata.op_time = str(row['OP_TIME'])[:-2]
+                    maindata.true_value = float(row[column])
                     maindata_list.append(maindata)
             # return maindata_list
 
@@ -134,8 +142,8 @@ class FactorAnalyser(object):
         data = pd.DataFrame(scaler.fit_transform(data))
         data.columns = heads
         # X,y
-        poly_X = data.drop(['OP_TIME', self.__class__.__target[0]], axis=1)
-        y = data[self.__class__.__target[0]]
+        poly_X = data.drop(['OP_TIME', self._target[0]], axis=1)
+        y = data[self._target[0]]
         kf = TimeSeriesSplit(n_splits=3)
         kf.get_n_splits(poly_X)
         print("start trainning model...")
@@ -169,22 +177,22 @@ class FactorAnalyser(object):
         return dict(named_scores)
 
     def __save_result(self, dic, period, init):
-        list = []
+        _list = []
         for key, value in dic.iteritems():
             r = Relation()
             r.index_pk_id = key
             r.influence_factor = value
-            r.parent_pk_id = self.__target[0]
+            r.parent_pk_id = self._target[0]
             r.op_time = period
             r.distance = 1
             r.is_leaf = 0
-            list.append(r)
-        return list
+            _list.append(r)
+        return _list
 
     def __save_second_level(self, period, init):
         list_parent = []  # 和父节点
         list_root_second = []  # 和根节点
-        for key, value in self.__level_two_factor_id.iteritems():
+        for key, value in self._level_two_factor_id.iteritems():
             for v in value:
                 r = Relation()
                 r.index_pk_id = v
@@ -198,7 +206,7 @@ class FactorAnalyser(object):
                 root = Relation()
                 root.index_pk_id = v
                 root.influence_factor = None
-                root.parent_pk_id = self.__target[0]
+                root.parent_pk_id = self._target[0]
                 root.op_time = period
                 root.distance = 2
                 root.is_leaf = 1
@@ -290,14 +298,14 @@ class NetBillUserAnalyser(FactorAnalyser):
 
 
 class FeeAnalyser(FactorAnalyser):
-    __target = ['FEE']
-    __factor_index_id = ['BILL_FEE',
-                         'PREPAY_FEE',
-                         'PRESENT_FEE',
-                         'INVALID_POST_BILL_FEE',
-                         'SUBTRACT_FEE',
-                         'OWEBACK_FEE']
-    __level_two_factor_id = {}
+    _target = ['ZB1001003']
+    _factor_index_id = ['ZB1001301',
+                         'ZB1001302',
+                         'ZB1001303',
+                         'ZB1001304',
+                         'ZB1001305',
+                         'ZB1001306']
+    _level_two_factor_id = {}
 
 
 class FactorAnalyserFactory(object):

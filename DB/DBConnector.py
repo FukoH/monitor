@@ -6,12 +6,12 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 
 # from po.PO import MainData
-import config
+from config import db
 
 
 class DBConnector:
     engine = create_engine('mysql+mysqlconnector://%s:%s@%s:3306/%s' % (
-        config['user'], config['password'], config['host'], config['base']))
+        db['user'], db['password'], db['host'], db['base']))
     # 创建DBSession类型:
     DBSession = sessionmaker(bind=engine)
 

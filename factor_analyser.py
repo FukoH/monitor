@@ -32,7 +32,7 @@ class FactorAnalyser(object):
         # load data
         first_level_data, second_level_data = self.__get_data_by_period(period)
         # predict
-        self.__predict(second_level_data, period,init)
+        self.__predict(second_level_data, period, init)
         # calculate factor
         dic = self.__modeling(first_level_data)
         list = self.__save_result(dic, period, init)
@@ -46,7 +46,7 @@ class FactorAnalyser(object):
         :param path:
         :return:
         '''
-        raw_data = pd.read_csv(path)
+        raw_data = pd.read_csv(path,encoding = 'gbk')
         raw_data['OP_TIME'].astype('int')
         # model_data = raw_data[['OP_TIME', 'INDEX_ID', 'INDEX_VALUE']][
         #     raw_data['INDEX_ID'].isin(self.__class__.__factor_index_id)]
@@ -83,18 +83,19 @@ class FactorAnalyser(object):
         second_level_series.interplorate()
         return fisrst_level_series, second_level_series
 
-    def __predict(self, data,period, init):
+    def __predict(self, data, period, init):
         columns = data.columns
-        maindata_list  = []
+        maindata_list = []
         for column in columns:
-            df = data[['OP_TIME',column]]
+            df = data[['OP_TIME', column]]
             result = self.__predict_by_model(df, init)
             if not init:
-                ME = self.__get_me(df,result)
+                ME = self.__get_me(df, result)
                 maindata = MainData()
-                maindata.index_pk_id = self.connector.session.query(IndexDef).filter_by(index_name="column").one().index_id
-                maindata.op_time=period
-                maindata.true_value = df[column].loc[df['OP_TIME'] ==str(int(period) -1)].item()
+                maindata.index_pk_id = self.connector.session.query(IndexDef).filter_by(
+                    index_name="column").one().index_id
+                maindata.op_time = period
+                maindata.true_value = df[column].loc[df['OP_TIME'] == str(int(period) - 1)].item()
                 maindata.predict_value = result.item()
                 maindata.upper_bound = result.item() + ME
                 maindata.lower_bound = result.item() - ME
@@ -112,7 +113,8 @@ class FactorAnalyser(object):
                 for index, row in df.iterrows():
                     # print(row['name'], row['score'])
                     maindata = MainData()
-                    maindata.index_pk_id = self.connector.session.query(IndexDef).filter_by(index_name="column").one().index_id
+                    maindata.index_pk_id = self.connector.session.query(IndexDef).filter_by(
+                        index_name="column").one().index_id
                     maindata.op_time = row['OP_TIME']
                     maindata.true_value = df[column]
                     maindata_list.append(maindata)
@@ -204,7 +206,7 @@ class FactorAnalyser(object):
         return list_parent, list_root_second
 
     def __predict_by_model(self, data, init):
-        if (init):
+        if init:
             return data
         else:
             return self.__predict_by_LSTM(data)
@@ -275,7 +277,7 @@ class FactorAnalyser(object):
         #     maindata = MainData()
         #     # maindata.index_pk_id =
 
-    def __get_me(self, df,prediction):
+    def __get_me(self, df, prediction):
         return prediction * 0.1
 
 
@@ -288,14 +290,14 @@ class NetBillUserAnalyser(FactorAnalyser):
 
 
 class FeeAnalyser(FactorAnalyser):
-    def __get_data_by_period(self, period):
-        raise NotImplementedError
-
-    def __modeling(self, data):
-        raise NotImplementedError
-
-    def __save_result(self, init):
-        raise NotImplementedError
+    __target = ['FEE']
+    __factor_index_id = ['BILL_FEE',
+                         'PREPAY_FEE',
+                         'PRESENT_FEE',
+                         'INVALID_POST_BILL_FEE',
+                         'SUBTRACT_FEE',
+                         'OWEBACK_FEE']
+    __level_two_factor_id = {}
 
 
 class FactorAnalyserFactory(object):

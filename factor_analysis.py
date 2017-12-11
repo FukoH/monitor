@@ -16,7 +16,7 @@ args = parser.parse_args()
 # 目标指标列表
 all_index_ids = ['ZB1001001','ZB1001002','ZB1001003']
 
-if (args.a == True) :
+if args.a :
     ids = all_index_ids
 else:
     ids = args.index_id

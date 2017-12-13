@@ -12,7 +12,7 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn import linear_model, model_selection
 
-raw_data = pd.read_csv(r'./data/BILL_USER.csv')
+raw_data = pd.read_csv(r'../data/BILL_USER.csv')
 heads = raw_data.columns
 # (0,1) transformation
 scaler = MinMaxScaler(feature_range=(0, 1))

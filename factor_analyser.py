@@ -11,7 +11,7 @@ from keras.layers import Dense
 from keras.layers import LSTM
 from sklearn.preprocessing import MinMaxScaler
 
-from po.PO import MainData, IndexDef
+from po.PO import MainData
 from po.PO import Relation
 from DB.DBConnector import DBConnector
 
@@ -23,16 +23,16 @@ class FactorAnalyser(object):
     connector = DBConnector()
 
     def analyse(self, period, init):
-        '''
+        """
         分析主方法
         :param period:  分析哪个期间
         :param init: 是否第一次初始化
         :return:
-        '''
+        """
         # load data
         first_level_data, second_level_data = self.__get_data_by_period(period)
         # predict
-        # self.__predict(second_level_data, period, init)
+        self.__predict(second_level_data, period, init)
         # calculate factor
         dic = self.__modeling(first_level_data)
         _list = self.__save_result(dic, period, init)
@@ -44,12 +44,12 @@ class FactorAnalyser(object):
         self.connector.add_data(_list)
 
     def __get_data_from_csv(self, path=r'./data/raw_data.csv'):
-        '''
+        """
         从原始的excel把数据转成关系型
         :param path:
         :return:
-        '''
-        raw_data = pd.read_csv(path,encoding = 'gbk')
+        """
+        raw_data = pd.read_csv(path, encoding='gbk')
         raw_data['OP_TIME'].astype('int')
         # model_data = raw_data[['OP_TIME', 'INDEX_ID', 'INDEX_VALUE']][
         #     raw_data['INDEX_ID'].isin(self.__factor_index_id)]
@@ -67,18 +67,18 @@ class FactorAnalyser(object):
         # second_level = raw_data[['OP_TIME', 'INDEX_VALUE']][raw_data['INDEX_ID'].isin(list(index_set).append('OP_TIME'))]
         # index_list = list(index_set)
         for column in index_set:
-            short = raw_data[['OP_TIME','INDEX_VALUE']][raw_data['INDEX_ID'].isin([column])]
+            short = raw_data[['OP_TIME', 'INDEX_VALUE']][raw_data['INDEX_ID'].isin([column])]
             short.columns = ['OP_TIME', column]
             output = output.merge(short, how='outer', on='OP_TIME')
         second_level_data = output
         return first_level_data, second_level_data
 
     def __get_data_by_period(self, period):
-        '''
+        """
 
         :param period:  生成哪个期间的数据
         :return:
-        '''
+        """
         period = int(period)
         first_level, second_level = self.__get_data_from_csv()
         fisrst_level_series = first_level[(first_level['OP_TIME'] <= period) & (first_level['OP_TIME'] >= 201303)]
@@ -91,21 +91,21 @@ class FactorAnalyser(object):
         data['OP_TIME'].astype('str')
         columns = data.columns
         maindata_list = []
-        columns = np.delete(columns,0)
+        columns = np.delete(columns, 0)
         for column in columns:
-            df = data[['OP_TIME', column]]        
-            result = self.__predict_by_model(df, init)
+            df = data[['OP_TIME', column]]
+            result = self.__predict_by_model(df, init, period)
             if not init:
-                ME = self.__get_me(df, result)
+                me = self.__get_me(df, result)
                 maindata = MainData()
-                #maindata.index_pk_id = self.connector.session.query(IndexDef).filter_by(
-                    #index_name="column").one().index_id
+                # maindata.index_pk_id = self.connector.session.query(IndexDef).filter_by(
+                # index_name="column").one().index_id
                 maindata.index_id = column
                 maindata.op_time = period
                 maindata.true_value = df[column].loc[df['OP_TIME'] == str(int(period) - 1)].item()
                 maindata.predict_value = result.item()
-                maindata.upper_bound = result.item() + ME
-                maindata.lower_bound = result.item() - ME
+                maindata.upper_bound = result.item() + me
+                maindata.lower_bound = result.item() - me
                 if maindata.true_value > maindata.upper_bound:
                     maindata.description = '>上限值'
                     maindata.is_abnormal = 1
@@ -119,12 +119,29 @@ class FactorAnalyser(object):
             else:
                 for index, row in df.iterrows():
                     # print(row['name'], row['score'])
+                    period = df.iloc[len(df) - 1]['OP_TIME']
+                    result = self.__predict_by_model(df, False, period)
+                    me = self.__get_me(df, result)
                     maindata = MainData()
-                    #maindata.index_pk_id = self.connector.session.query(IndexDef).filter_by(
-                       # index_name="column").one().index_id
+                    # maindata.index_pk_id = self.connector.session.query(IndexDef).filter_by(
+                    # index_name="column").one().index_id
                     maindata.index_id = column
                     maindata.op_time = str(row['OP_TIME'])[:-2]
                     maindata.true_value = float(row[column])
+                    maindata.predict_value = result.item()
+                    
+                    maindata.upper_bound = result.item() + me
+                    maindata.lower_bound = result.item() - me
+                    if maindata.true_value > maindata.upper_bound:
+                        maindata.description = '>上限值'
+                        maindata.is_abnormal = 1
+                    elif maindata.true_value < maindata.lower_bound:
+                        maindata.description = '<下限值'
+                        maindata.is_abnormal = 1
+                    else:
+                        maindata.description = '预测区间内'
+                        maindata.is_abnormal = 0
+
                     maindata_list.append(maindata)
             # return maindata_list
 
@@ -213,19 +230,20 @@ class FactorAnalyser(object):
                 list_root_second.append(root)
         return list_parent, list_root_second
 
-    def __predict_by_model(self, data, init):
+    def __predict_by_model(self, data, init, period):
         if init:
             return data
         else:
-            return self.__predict_by_LSTM(data)
+            return self.__predict_by_LSTM(data, period)
 
-    def __predict_by_LSTM(self, data):
+    def __predict_by_LSTM(self, data, period):
         sys.setrecursionlimit(1048576)
         """
         载入指定路径的数据，usecols=[1] 读取第二列
         """
+        column_name = data.columns[1]
         # 取dataframe中的数值
-        dataset = data.values
+        dataset = data[column_name].values
         # 将数值类型转换成浮点型
         dataset = dataset.astype('float32')
 
@@ -274,7 +292,8 @@ class FactorAnalyser(object):
         model.add(Dense(1))
         model.compile(loss='mean_squared_error', optimizer=optimizer)
         model.fit(trainX, trainY, nb_epoch=nb_epoch, batch_size=1, verbose=2)
-        predict_value = model.predict(np.asarray(dataset[-1]).reshape(1, 1, 1))
+        t_0 = data[column_name][data['OP_TIME'] == period].item()  # 要预测的那一期
+        predict_value = model.predict(np.asarray(t_0).reshape(1, 1, 1))
         return predict_value
 
     def __add_to_database(self, result, init):
@@ -300,11 +319,11 @@ class NetBillUserAnalyser(FactorAnalyser):
 class FeeAnalyser(FactorAnalyser):
     _target = ['ZB1001003']
     _factor_index_id = ['ZB1001301',
-                         'ZB1001302',
-                         'ZB1001303',
-                         'ZB1001304',
-                         'ZB1001305',
-                         'ZB1001306']
+                        'ZB1001302',
+                        'ZB1001303',
+                        'ZB1001304',
+                        'ZB1001305',
+                        'ZB1001306']
     _level_two_factor_id = {}
 
 

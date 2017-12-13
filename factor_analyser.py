@@ -9,6 +9,7 @@ import sys
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import LSTM
+from keras.models import load_model
 from sklearn.preprocessing import MinMaxScaler
 
 from po.PO import MainData
@@ -90,9 +91,9 @@ class FactorAnalyser(object):
     def __predict(self, data, period, init):
         data['OP_TIME'].astype('str')
         columns = data.columns
-        maindata_list = []
         columns = np.delete(columns, 0)
         for column in columns:
+            maindata_list = []
             df = data[['OP_TIME', column]]
             result = self.__predict_by_model(df, init, period)
             if not init:
@@ -117,21 +118,30 @@ class FactorAnalyser(object):
                     maindata.is_abnormal = 0
                 maindata_list.append(maindata)
             else:
+                # result = self.__predict_by_model(df, False, period)
+                # iter = izip(df,result)
+                result = result.flatten()
+                i = 0
                 for index, row in df.iterrows():
                     # print(row['name'], row['score'])
                     period = df.iloc[len(df) - 1]['OP_TIME']
-                    result = self.__predict_by_model(df, False, period)
-                    me = self.__get_me(df, result)
+                    # result = self.__predict_by_model(df, False, period)
+                    me = self.__get_me(df, result[i])
                     maindata = MainData()
                     # maindata.index_pk_id = self.connector.session.query(IndexDef).filter_by(
                     # index_name="column").one().index_id
                     maindata.index_id = column
                     maindata.op_time = str(row['OP_TIME'])[:-2]
                     maindata.true_value = float(row[column])
-                    maindata.predict_value = result.item()
-                    
-                    maindata.upper_bound = result.item() + me
-                    maindata.lower_bound = result.item() - me
+                    if i == 0:
+                        maindata.last_month_value = maindata.true_value
+                    else:
+                        maindata.last_month_value = float(result[i - 1])
+                        maindata.upper_bound = float(result[i-1] + me)
+                        maindata.lower_bound = float(result[i-1] - me)
+                    maindata.predict_value = float(result[i])
+
+                  
                     if maindata.true_value > maindata.upper_bound:
                         maindata.description = '>上限值'
                         maindata.is_abnormal = 1
@@ -143,9 +153,12 @@ class FactorAnalyser(object):
                         maindata.is_abnormal = 0
 
                     maindata_list.append(maindata)
+                    i = i+1
+                    
             # return maindata_list
 
             self.__add_to_database(maindata_list, init)
+            print('Added {} to database'.format(column))
 
     def __modeling(self, data):
         '''
@@ -231,12 +244,12 @@ class FactorAnalyser(object):
         return list_parent, list_root_second
 
     def __predict_by_model(self, data, init, period):
-        if init:
-            return data
-        else:
-            return self.__predict_by_LSTM(data, period)
+        # if init:
+        #     return data
+        # else:
+        return self.__predict_by_LSTM(data, period, init)
 
-    def __predict_by_LSTM(self, data, period):
+    def __predict_by_LSTM(self, data, period, init):
         sys.setrecursionlimit(1048576)
         """
         载入指定路径的数据，usecols=[1] 读取第二列
@@ -246,7 +259,7 @@ class FactorAnalyser(object):
         dataset = data[column_name].values
         # 将数值类型转换成浮点型
         dataset = dataset.astype('float32')
-
+        
         """
         定义一个array的值转换成矩阵的函数
         """
@@ -261,7 +274,8 @@ class FactorAnalyser(object):
 
         # 标准化数据
         scaler = MinMaxScaler(feature_range=(0, 1))
-        dataset = scaler.fit_transform(dataset[:-1])
+        dataset = dataset.reshape(len(dataset),1)
+        dataset = scaler.fit_transform(dataset)
 
         train_size = int(len(dataset) - 1)
         train, test = dataset[0:train_size, :], dataset[train_size:len(dataset), :]
@@ -286,15 +300,20 @@ class FactorAnalyser(object):
         nb_epoch = 100
         optimizer = 'adam'
         model = Sequential()
-        # model.add(Dense(sample,input_shape=(look_back,)))
         model.add(LSTM(sample, input_dim=look_back))
-        # model.add(layers.Dropout(0.01))
         model.add(Dense(1))
         model.compile(loss='mean_squared_error', optimizer=optimizer)
         model.fit(trainX, trainY, nb_epoch=nb_epoch, batch_size=1, verbose=2)
-        t_0 = data[column_name][data['OP_TIME'] == period].item()  # 要预测的那一期
-        predict_value = model.predict(np.asarray(t_0).reshape(1, 1, 1))
-        return predict_value
+#        model = load_model('my.h5')
+        # t_0 = data[column_name][data['OP_TIME'] == period].item()  # 要预测的那一期
+
+        if init:
+            predict_value = scaler.inverse_transform(model.predict(dataset.reshape(len(dataset),1,1)))
+            return predict_value
+        else:
+            t_0 = data[column_name][data['OP_TIME'] == period + '.0'].item()
+            predict_value = model.predict(t_0.reshape(1, 1, 1))
+            return predict_value
 
     def __add_to_database(self, result, init):
         self.connector.add_data(result)

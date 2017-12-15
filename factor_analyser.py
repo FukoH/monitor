@@ -340,7 +340,13 @@ class FactorAnalyser(object):
 
 
 class BillUserAnalyser(FactorAnalyser):
-    pass
+    _target = ['ZB1001001']
+    _factor_index_id = ['ZB1001101',
+                        'ZB1001102',
+                        'ZB1001103',
+                        'ZB1001104',
+                        'ZB1001105']
+    _level_two_factor_id = {}
 
 
 class NetBillUserAnalyser(FactorAnalyser):

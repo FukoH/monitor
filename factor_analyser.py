@@ -130,6 +130,7 @@ class FactorAnalyser(object):
                 # iter = izip(df,result)
                 result = result.flatten()
                 i = 0
+                last_month_true_value = 0 #保存上月真实值
                 for index, row in df.iterrows():
                     # print(row['name'], row['score'])
                     period = df.iloc[len(df) - 1]['OP_TIME']
@@ -146,8 +147,14 @@ class FactorAnalyser(object):
                     maindata.true_value = float(row[column])
                     if i == 0:
                         maindata.last_month_value = maindata.true_value
+                        
+                        maindata.last_month_true_value = last_month_true_value
+                        last_month_true_value = maindata.true_value
                     else:
                         maindata.last_month_value = float(result[i - 1])
+                        #把上月真实值赋值并更新
+                        maindata.last_month_true_value = last_month_true_value
+                        last_month_true_value = maindata.true_value
                         maindata.upper_bound = float(result[i-1] + me)
                         maindata.lower_bound = float(result[i-1] - me)
                     maindata.predict_value = float(result[i])

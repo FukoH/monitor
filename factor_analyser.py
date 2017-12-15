@@ -97,16 +97,24 @@ class FactorAnalyser(object):
             df = data[['OP_TIME', column]]
             result = self.__predict_by_model(df, init, period)
             if not init:
-                me = self.__get_me(df, result)
+                
                 maindata = MainData()
                 # maindata.index_pk_id = self.connector.session.query(IndexDef).filter_by(
                 # index_name="column").one().index_id
                 maindata.index_id = column
                 maindata.op_time = period
-                maindata.true_value = df[column].loc[df['OP_TIME'] == str(int(period) - 1)].item()
+                df= df.reset_index()
+                # TODO 得到上一期的op_time
+                maindata.last_period = df['OP_TIME'].iloc[df.index[df['OP_TIME']==period] - 1 ].item()
+                #maindata.true_value = df[column].iloc[df.index[df['OP_TIME']==period] - 1 ].item()
+                maindata.true_value = df[column].iloc[df.index[df['OP_TIME']==period]].item()
+                last_period_maindata = self.connector.select_maindata(maindata)
+                me = self.__get_me(df, last_period_maindata.predict_value)
                 maindata.predict_value = result.item()
-                maindata.upper_bound = result.item() + me
-                maindata.lower_bound = result.item() - me
+                maindata.upper_bound = last_period_maindata.predict_value + me
+                maindata.lower_bound = last_period_maindata.predict_value - me
+                maindata.last_month_value = last_period_maindata.predict_value
+                
                 if maindata.true_value > maindata.upper_bound:
                     maindata.description = '>上限值'
                     maindata.is_abnormal = 1
@@ -126,7 +134,10 @@ class FactorAnalyser(object):
                     # print(row['name'], row['score'])
                     period = df.iloc[len(df) - 1]['OP_TIME']
                     # result = self.__predict_by_model(df, False, period)
-                    me = self.__get_me(df, result[i])
+                    if i==0:
+                        me = self.__get_me(df, result[i])
+                    else:  
+                        me = self.__get_me(df, result[i-1])
                     maindata = MainData()
                     # maindata.index_pk_id = self.connector.session.query(IndexDef).filter_by(
                     # index_name="column").one().index_id
@@ -311,9 +322,10 @@ class FactorAnalyser(object):
             predict_value = scaler.inverse_transform(model.predict(dataset.reshape(len(dataset),1,1)))
             return predict_value
         else:
-            t_0 = data[column_name][data['OP_TIME'] == period + '.0'].item()
+            data['OP_TIME'] = data['OP_TIME'].apply(str)
+            t_0 = data.loc[data['OP_TIME'] == period, column_name]
             predict_value = model.predict(t_0.reshape(1, 1, 1))
-            return predict_value
+            return scaler.inverse_transform(predict_value)
 
     def __add_to_database(self, result, init):
         self.connector.add_data(result)

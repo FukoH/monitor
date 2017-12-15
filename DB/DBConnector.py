@@ -5,7 +5,7 @@ from sqlalchemy import Column, String, create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 
-# from po.PO import MainData
+from po.PO import MainData
 from config import db
 
 
@@ -29,7 +29,9 @@ class DBConnector:
         # 关闭session:
         # self.session.close()
 
-
+    def select_maindata(self,maindata):
+        maindata = self.session.query(MainData).filter(MainData.op_time == maindata.last_period,MainData.index_id==maindata.index_id).one()
+        return maindata
         # def update_data(self,_class,data):
         #
         # # 创建新User对象:

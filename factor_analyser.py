@@ -90,7 +90,7 @@ class FactorAnalyser(object):
 
     def __predict(self, data, period, init):
         data['OP_TIME'].astype('str')
-        
+
         columns = data.columns
         columns = np.delete(columns, 0)
         for column in columns:
@@ -98,26 +98,35 @@ class FactorAnalyser(object):
             df = data[['OP_TIME', column]]
             df = df.sort_values('OP_TIME')
             df = df.reset_index()
-            df = df.drop(['index'],axis = 1)
+            df = df.drop(['index'], axis=1)
             result = self.__predict_by_model(df, init, period)
             if not init:
-                
+
                 maindata = MainData()
                 # maindata.index_pk_id = self.connector.session.query(IndexDef).filter_by(
                 # index_name="column").one().index_id
                 maindata.index_id = column
                 maindata.op_time = period
-                df= df.reset_index()
+                df = df.reset_index()
                 # TODO 得到上一期的op_time
-                maindata.last_period = df['OP_TIME'].iloc[df.index[df['OP_TIME']==period] - 1 ].item()
-                #maindata.true_value = df[column].iloc[df.index[df['OP_TIME']==period] - 1 ].item()
-                maindata.true_value = df[column].iloc[df.index[df['OP_TIME']==period]].item()
+                maindata.last_period = df['OP_TIME'].iloc[df.index[df['OP_TIME'] == period] - 1].item()
+                # maindata.true_value = df[column].iloc[df.index[df['OP_TIME']==period] - 1 ].item()
+                maindata.true_value = df[column].iloc[df.index[df['OP_TIME'] == period]].item()
                 last_period_maindata = self.connector.select_maindata(maindata)
                 me = self.__get_me(df, last_period_maindata.predict_value)
                 maindata.predict_value = result.item()
                 maindata.upper_bound = last_period_maindata.predict_value + me
                 maindata.lower_bound = last_period_maindata.predict_value - me
                 maindata.last_month_value = last_period_maindata.predict_value
+
+                maindata.last_month_true_value = last_period_maindata.true_value
+                if last_period_maindata.true_value != None and last_period_maindata.true_value != 0:
+                    maindata.last_month_percentage_difference = maindata.true_value / last_period_maindata.true_value - 1
+                if not df['OP_TIME'].iloc[df.index[df['OP_TIME'] == str((int(period) - 100))]].empty:
+                    maindata.last_period = df['OP_TIME'].iloc[df.index[df['OP_TIME'] == str((int(period) - 100))]].item()
+                    last_year_maindata = self.connector.select_maindata(maindata)
+                    maindata.last_year_value = last_year_maindata.true_value
+                    maindata.percentage_difference = maindata.true_value/maindata.last_year_value - 1
                 
                 if maindata.true_value > maindata.upper_bound:
                     maindata.description = '>上限值'
@@ -130,22 +139,19 @@ class FactorAnalyser(object):
                     maindata.is_abnormal = 0
                 maindata_list.append(maindata)
             else:
-                # result = self.__predict_by_model(df, False, period)
-                # iter = izip(df,result)
+
                 result = result.flatten()
-                i = 0 # counter
-                last_month_true_value = 0 #保存上月真实值
+                i = 0  # counter
+                last_month_true_value = 0  # 保存上月真实值
                 for index, row in df.iterrows():
                     # print(row['name'], row['score'])
                     period = df.iloc[len(df) - 1]['OP_TIME']
                     # result = self.__predict_by_model(df, False, period)
-                    if i==0:
+                    if i == 0:
                         me = self.__get_me(df, result[i])
-                    else:  
-                        me = self.__get_me(df, result[i-1])
+                    else:
+                        me = self.__get_me(df, result[i - 1])
                     maindata = MainData()
-                    # maindata.index_pk_id = self.connector.session.query(IndexDef).filter_by(
-                    # index_name="column").one().index_id
                     maindata.index_id = column
                     maindata.op_time = str(row['OP_TIME'])[:-2]
                     maindata.true_value = float(row[column])
@@ -155,19 +161,20 @@ class FactorAnalyser(object):
                         last_month_true_value = maindata.true_value
                     else:
                         maindata.last_month_value = float(result[i - 1])
-                        #把上月真实值赋值并更新
+                        # 把上月真实值赋值并更新
                         maindata.last_month_true_value = last_month_true_value
                         last_month_true_value = maindata.true_value
-                        maindata.last_month_percentage_difference = (maindata.true_value/maindata.last_month_true_value) - 1
-                        if not df[column].iloc[df.index[df['OP_TIME']==(int(row['OP_TIME']-100))]].empty:
+                        maindata.last_month_percentage_difference = (
+                                                                        maindata.true_value / maindata.last_month_true_value) - 1
+                        if not df[column].iloc[df.index[df['OP_TIME'] == (int(row['OP_TIME'] - 100))]].empty:
                             # print(row['OP_TIME']-100)
-                            maindata.last_year_value = df[column].iloc[df.index[df['OP_TIME']==(int(row['OP_TIME']-100))]].item()
-                            maindata.percentage_difference = maindata.true_value/maindata.last_year_value -1
-                        maindata.upper_bound = float(result[i-1] + me)
-                        maindata.lower_bound = float(result[i-1] - me)
+                            maindata.last_year_value = df[column].iloc[
+                                df.index[df['OP_TIME'] == (int(row['OP_TIME'] - 100))]].item()
+                            maindata.percentage_difference = maindata.true_value / maindata.last_year_value - 1
+                        maindata.upper_bound = float(result[i - 1] + me)
+                        maindata.lower_bound = float(result[i - 1] - me)
                     maindata.predict_value = float(result[i])
 
-                  
                     if maindata.true_value > maindata.upper_bound:
                         maindata.description = '>上限值'
                         maindata.is_abnormal = 1
@@ -179,8 +186,8 @@ class FactorAnalyser(object):
                         maindata.is_abnormal = 0
 
                     maindata_list.append(maindata)
-                    i = i+1
-                    
+                    i = i + 1
+
             # return maindata_list
 
             self.__add_to_database(maindata_list, init)
@@ -285,7 +292,7 @@ class FactorAnalyser(object):
         dataset = data[column_name].values
         # 将数值类型转换成浮点型
         dataset = dataset.astype('float32')
-        
+
         """
         定义一个array的值转换成矩阵的函数
         """
@@ -300,7 +307,7 @@ class FactorAnalyser(object):
 
         # 标准化数据
         scaler = MinMaxScaler(feature_range=(0, 1))
-        dataset = dataset.reshape(len(dataset),1)
+        dataset = dataset.reshape(len(dataset), 1)
         dataset = scaler.fit_transform(dataset)
 
         train_size = int(len(dataset) - 1)
@@ -330,15 +337,16 @@ class FactorAnalyser(object):
         model.add(Dense(1))
         model.compile(loss='mean_squared_error', optimizer=optimizer)
         model.fit(trainX, trainY, nb_epoch=nb_epoch, batch_size=1, verbose=2)
-#        model = load_model('my.h5')
+        #        model = load_model('my.h5')
         # t_0 = data[column_name][data['OP_TIME'] == period].item()  # 要预测的那一期
 
         if init:
-            predict_value = scaler.inverse_transform(model.predict(dataset.reshape(len(dataset),1,1)))
+            predict_value = scaler.inverse_transform(model.predict(dataset.reshape(len(dataset), 1, 1)))
             return predict_value
         else:
             data['OP_TIME'] = data['OP_TIME'].apply(str)
             t_0 = data.loc[data['OP_TIME'] == period, column_name]
+            t_0 = scaler.transform(t_0.reshape(-1,1))
             predict_value = model.predict(t_0.reshape(1, 1, 1))
             return scaler.inverse_transform(predict_value)
 

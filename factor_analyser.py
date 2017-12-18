@@ -90,11 +90,15 @@ class FactorAnalyser(object):
 
     def __predict(self, data, period, init):
         data['OP_TIME'].astype('str')
+        
         columns = data.columns
         columns = np.delete(columns, 0)
         for column in columns:
             maindata_list = []
             df = data[['OP_TIME', column]]
+            df = df.sort_values('OP_TIME')
+            df = df.reset_index()
+            df = df.drop(['index'],axis = 1)
             result = self.__predict_by_model(df, init, period)
             if not init:
                 
@@ -129,7 +133,7 @@ class FactorAnalyser(object):
                 # result = self.__predict_by_model(df, False, period)
                 # iter = izip(df,result)
                 result = result.flatten()
-                i = 0
+                i = 0 # counter
                 last_month_true_value = 0 #保存上月真实值
                 for index, row in df.iterrows():
                     # print(row['name'], row['score'])
@@ -147,7 +151,6 @@ class FactorAnalyser(object):
                     maindata.true_value = float(row[column])
                     if i == 0:
                         maindata.last_month_value = maindata.true_value
-                        
                         maindata.last_month_true_value = last_month_true_value
                         last_month_true_value = maindata.true_value
                     else:
@@ -155,6 +158,11 @@ class FactorAnalyser(object):
                         #把上月真实值赋值并更新
                         maindata.last_month_true_value = last_month_true_value
                         last_month_true_value = maindata.true_value
+                        maindata.last_month_percentage_difference = (maindata.true_value/maindata.last_month_true_value) - 1
+                        if not df[column].iloc[df.index[df['OP_TIME']==(int(row['OP_TIME']-100))]].empty:
+                            # print(row['OP_TIME']-100)
+                            maindata.last_year_value = df[column].iloc[df.index[df['OP_TIME']==(int(row['OP_TIME']-100))]].item()
+                            maindata.percentage_difference = maindata.true_value/maindata.last_year_value -1
                         maindata.upper_bound = float(result[i-1] + me)
                         maindata.lower_bound = float(result[i-1] - me)
                     maindata.predict_value = float(result[i])

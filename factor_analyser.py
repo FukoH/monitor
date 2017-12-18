@@ -84,8 +84,11 @@ class FactorAnalyser(object):
         first_level, second_level = self.__get_data_from_csv()
         fisrst_level_series = first_level[(first_level['OP_TIME'] <= period) & (first_level['OP_TIME'] >= 201303)]
         second_level_series = second_level[(second_level['OP_TIME'] <= period) & (second_level['OP_TIME'] >= 201303)]
-        fisrst_level_series.interpolate()
-        second_level_series.interpolate()
+        fisrst_level_series = fisrst_level_series.dropna()
+        second_level_series = second_level_series.dropna()
+        #second_level_series = second_level_series.sort_values('OP_TIME').reset_index().interpolate().dropna()
+        #fisrst_level_series=fisrst_level_series.interpolate()
+        #second_level_series=second_level_series.interpolate()
         return fisrst_level_series, second_level_series
 
     def __predict(self, data, period, init):
@@ -373,7 +376,27 @@ class BillUserAnalyser(FactorAnalyser):
 
 
 class NetBillUserAnalyser(FactorAnalyser):
-    pass
+    _target = ['ZB1001002']
+    _factor_index_id = ['ZB1001106',
+                        'ZB1001107',
+                        'ZB1001108']
+    _level_two_factor_id = {
+            'ZB1001106':[],
+            'ZB1001107':['ZB1001101',
+                         'ZB1001102',
+                        'ZB1001103',
+                        'ZB1001104',
+                        'ZB1001105',
+                        'ZB1001206',
+                        'ZB1001207'],
+            'ZB1001108':['ZB1001101',
+                         'ZB1001102',
+                        'ZB1001103',
+                        'ZB1001104',
+                        'ZB1001105',
+                        'ZB1001206',
+                        'ZB1001207']
+            } # {'index1':[index1-a,index1-b],'index2':[index2-a,index2-b]}
 
 
 class FeeAnalyser(FactorAnalyser):

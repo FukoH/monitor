@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 
 from po.PO import MainData
-from config import db
+from DB.config import db
 
 
 class DBConnector:

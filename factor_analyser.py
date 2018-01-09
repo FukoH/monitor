@@ -10,10 +10,6 @@ from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import LSTM
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.metrics import mean_squared_error
-from keras import backend as K
-import tensorflow as tf
-import scipy.stats
 from relation import relation
 
 from po.PO import MainData
@@ -95,13 +91,12 @@ class FactorAnalyser(object):
         columns = data.columns
         columns = np.delete(columns, 0)
         for column in columns:
-
             maindata_list = []
             df = data[['OP_TIME', column]]
             df = df.sort_values('OP_TIME')
             df = df.reset_index()
             df = df.drop(['index'], axis=1)
-            result, me_all = self.__predict_by_LSTM(df, init, period)
+            result = self.__predict_by_LSTM(df, init, period)
 
             if not init:
 
@@ -112,19 +107,13 @@ class FactorAnalyser(object):
                 maindata.last_period = df['OP_TIME'].iloc[df.index[df['OP_TIME'] == int(period)] - 1].item()
                 maindata.true_value = df[column].iloc[df.index[df['OP_TIME'] == int(period)]].item()
                 last_period_maindata = self.connector.select_maindata(maindata)
-                #                me = self.__get_me(df, last_period_maindata.predict_value)
-                df['me'] = me_all
                 df['result'] = result
-                me = df['me'].iloc[df.index[df['OP_TIME'] == int(period)] - 1].item()
-                
-                #                me = me_all[df.index[df['OP_TIME'] == period][0]]
+                me = self.__get_me(last_period_maindata.predict_value)
                 maindata.predict_value = df['result'].iloc[df.index[df['OP_TIME'] == int(period)]].item()
                 maindata.upper_bound = last_period_maindata.predict_value + me
                 maindata.lower_bound = last_period_maindata.predict_value - me
                 maindata.last_month_value = last_period_maindata.predict_value
-                # 有时候程序运行的结果会出现None,原因未知,为了防止报错,替换为预测值的10%
-                if me == None:
-                    me = maindata.last_month_value * 0.1
+
                 maindata.last_month_true_value = last_period_maindata.true_value
                 if last_period_maindata.true_value != None and last_period_maindata.true_value != 0:
                     maindata.last_month_percentage_difference = maindata.true_value / last_period_maindata.true_value - 1
@@ -151,16 +140,11 @@ class FactorAnalyser(object):
                 i = 0  # counter
                 last_month_true_value = 0  # 保存上月真实值
                 for index, row in df.iterrows():
-                    # print(row['name'], row['score'])
                     period = df.iloc[len(df) - 1]['OP_TIME']
-                    # result = self.__predict_by_model(df, False, period)
                     if i == 0:
-                        #                        me = self.__get_me(df, result[i])
-                        me = me_all[i]
+                        me = self.__get_me(result[i])
                     else:
-                        me = me_all[i - 1]
-                        if me == None:
-                            me = result[i] * 0.1
+                        me = self.__get_me(result[i - 1])
                     maindata = MainData()
                     maindata.index_id = column
                     maindata.op_time = str(row['OP_TIME'])[:-2]
@@ -351,83 +335,13 @@ class FactorAnalyser(object):
         # if init:
         predict_value = scaler.inverse_transform(model.predict(dataset.reshape(len(dataset), 1, 1)))
 
-        weights = [tensor for tensor in model.trainable_weights if
-                   model.get_layer(tensor.name.split('/')[0]).trainable]
-
-        gradients = K.gradients(model.output, weights)
-        F_list = []
-        sess = tf.InteractiveSession()
-        sess.run(tf.global_variables_initializer())
-        for input in dataset.flatten():
-            trainingExample = np.array([[[input]]])
-            #            sess = tf.InteractiveSession()
-            #            sess.run(tf.global_variables_initializer())
-            evaluated_gradients = sess.run(gradients, feed_dict={model.input: trainingExample})  # 是一个ndarray的list
-            gradients_1d = [e.flatten() for e in evaluated_gradients]  # 1d的ndarray数组
-            all_param = tuple(gradients_1d)  # 1d的 ndarray 元组
-            f0 = np.hstack(all_param)
-            F_list.append(f0)
-            print('calculating gradient...')
-        F = np.vstack(tuple(F_list))
-        y_true = dataset[1:]
-        y_predict = predict_value[:-1]
-        s = (1. / (len(dataset)-len(F[0]))) * np.sqrt(mean_squared_error(scaler.inverse_transform(y_true), y_predict))
-        t_score = scipy.stats.t.isf(0.1 / 2, df= len(dataset)-len(F[0]))
-        matF = np.mat(F)
-        me = s * t_score * np.sqrt(np.diag((matF.dot(np.linalg.pinv(matF.T.dot(matF))).dot(matF.T) + 1)))
-
-        return predict_value, me
+        return predict_value
 
     def __add_to_database(self, result, init):
         self.connector.add_data(result)
 
-    def __get_me(self, df, prediction):
-        return prediction * 0.1
-
-
-# class BillUserAnalyser(FactorAnalyser):
-#     _target = ['ZB1001001']
-#     _factor_index_id = ['ZB1001101',
-#                         'ZB1001102',
-#                         'ZB1001103',
-#                         'ZB1001104',
-#                         'ZB1001105']
-#     _level_two_factor_id = {}
-#
-#
-# class NetBillUserAnalyser(FactorAnalyser):
-#     _target = ['ZB1001002']
-#     _factor_index_id = ['ZB1001106',
-#                         'ZB1001107',
-#                         'ZB1001108']
-#     _level_two_factor_id = {
-#         'ZB1001106': [],
-#         'ZB1001107': ['ZB1001101',
-#                       'ZB1001102',
-#                       'ZB1001103',
-#                       'ZB1001104',
-#                       'ZB1001105',
-#                       'ZB1001206',
-#                       'ZB1001207'],
-#         'ZB1001108': ['ZB1001101',
-#                       'ZB1001102',
-#                       'ZB1001103',
-#                       'ZB1001104',
-#                       'ZB1001105',
-#                       'ZB1001206',
-#                       'ZB1001207']
-#     }  # {'index1':[index1-a,index1-b],'index2':[index2-a,index2-b]}
-#
-#
-# class FeeAnalyser(FactorAnalyser):
-#     _target = ['ZB1001003']
-#     _factor_index_id = ['ZB1001301',
-#                         'ZB1001302',
-#                         'ZB1001303',
-#                         'ZB1001304',
-#                         'ZB1001305',
-#                         'ZB1001306']
-#     _level_two_factor_id = {}
+    def __get_me(self, prediction):
+        return prediction * 0.05
 
 
 class DefaultAnalyser(FactorAnalyser):
@@ -438,14 +352,3 @@ class DefaultAnalyser(FactorAnalyser):
             self._level_two_factor_id = {}
         else:
             self._level_two_factor_id = relation[index_id]
-
-
-# class FactorAnalyserFactory(object):
-#     @classmethod
-#     def get_analyser(cls, index_id):
-#         if index_id == 'ZB1001001':
-#             return BillUserAnalyser()
-#         elif index_id == 'ZB1001002':
-#             return NetBillUserAnalyser()
-#         elif index_id == 'ZB1001003':
-#             return FeeAnalyser()

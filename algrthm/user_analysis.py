@@ -44,7 +44,7 @@ for train_index, test_index in kf.split(poly_X):
     y_train, y_test = y.iloc[train_index], y.iloc[test_index]
     lassocv = linear_model.LassoCV(cv=10, max_iter=1500)
     lassocv.fit(X_train, y_train)
-    print ("alpha is %s" % (lassocv.alpha_))
+    print("alpha is %s" % (lassocv.alpha_))
     lasso = linear_model.Lasso(alpha=lassocv.alpha_).fit(X_train, y_train)
     lasso_models.append(lasso)
     score = lasso.score(X_test, y_test)
@@ -52,7 +52,7 @@ for train_index, test_index in kf.split(poly_X):
 scores_ndarray = np.asarray(scores)
 best_model = lasso_models[scores_ndarray.argmax()]
 cv_result = model_selection.cross_val_score(best_model, poly_X, y, cv=kf, scoring='neg_mean_squared_error')
-print ('the mean neg_mse_score for LassoRegression is %s' % (np.mean(np.asarray(cv_result))))
+print('the mean neg_mse_score for LassoRegression is %s' % (np.mean(np.asarray(cv_result))))
 mean_performance.append(np.mean(np.asarray(cv_result)))
 
 # ===========================
@@ -88,8 +88,9 @@ mean_performance.append(np.mean(np.asarray(cv_result)))
 # factors = np.square(np.asarray(best_model.coef_))
 factors = np.abs(np.asarray(best_model.coef_))
 
-#得到影响因子
-influence = factors/np.sum(factors)
+# 得到影响因子
+influence = factors / np.sum(factors)
+
 
 def format_to_two_decimal_places(x):
     '''
@@ -98,13 +99,16 @@ def format_to_two_decimal_places(x):
     :return:
     '''
     return '%.2f' % x
-#格式化一下小数,输出两位小数
-formatted_influence = map(format_to_two_decimal_places,influence)
+
+
+# 格式化一下小数,输出两位小数
+formatted_influence = map(format_to_two_decimal_places, influence)
 named_scores = zip(X.columns, influence)
 sorted_named_scores = sorted(named_scores, key=lambda influence: influence[1], reverse=True)
-for (name,factor) in sorted_named_scores:
-    print('%s , %.2f ' %(name,factor))
+for (name, factor) in sorted_named_scores:
+    print('%s , %.2f ' % (name, factor))
 
 import seaborn as sns
-sns.barplot(x=influence, y=X.columns,order=[s[0] for s in sorted_named_scores],orient='h')
+
+sns.barplot(x=influence, y=X.columns, order=[s[0] for s in sorted_named_scores], orient='h')
 plt.show()

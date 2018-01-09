@@ -14,6 +14,7 @@ from sklearn.metrics import mean_squared_error
 from keras import backend as K
 import tensorflow as tf
 import scipy.stats
+from relation import relation
 
 from po.PO import MainData
 from po.PO import Relation
@@ -55,8 +56,6 @@ class FactorAnalyser(object):
         """
         raw_data = pd.read_csv(path, encoding='gbk')
         raw_data['OP_TIME'].astype('int')
-        # model_data = raw_data[['OP_TIME', 'INDEX_ID', 'INDEX_VALUE']][
-        #     raw_data['INDEX_ID'].isin(self.__factor_index_id)]
         output = raw_data[['OP_TIME', 'INDEX_VALUE']][raw_data['INDEX_ID'].isin(self._target)]
         output.columns = ['OP_TIME', self._target[0]]
         for column in self._factor_index_id:
@@ -68,8 +67,6 @@ class FactorAnalyser(object):
         for v in self._level_two_factor_id.values():
             for index in v:
                 index_set.add(index)
-        # second_level = raw_data[['OP_TIME', 'INDEX_VALUE']][raw_data['INDEX_ID'].isin(list(index_set).append('OP_TIME'))]
-        # index_list = list(index_set)
         for column in index_set:
             short = raw_data[['OP_TIME', 'INDEX_VALUE']][raw_data['INDEX_ID'].isin([column])]
             short.columns = ['OP_TIME', column]
@@ -89,9 +86,7 @@ class FactorAnalyser(object):
         second_level_series = second_level[(second_level['OP_TIME'] <= period) & (second_level['OP_TIME'] >= 201303)]
         fisrst_level_series = fisrst_level_series.dropna()
         second_level_series = second_level_series.dropna()
-        # second_level_series = second_level_series.sort_values('OP_TIME').reset_index().interpolate().dropna()
-        # fisrst_level_series=fisrst_level_series.interpolate()
-        # second_level_series=second_level_series.interpolate()
+
         return fisrst_level_series, second_level_series
 
     def __predict(self, data, period, init):
@@ -100,33 +95,29 @@ class FactorAnalyser(object):
         columns = data.columns
         columns = np.delete(columns, 0)
         for column in columns:
-#            if column!='ZB1001306':
-#                continue
+
             maindata_list = []
             df = data[['OP_TIME', column]]
             df = df.sort_values('OP_TIME')
             df = df.reset_index()
             df = df.drop(['index'], axis=1)
-            result, me_all = self.__predict_by_model(df, init, period)
+            result, me_all = self.__predict_by_LSTM(df, init, period)
 
             if not init:
 
                 maindata = MainData()
-                # maindata.index_pk_id = self.connector.session.query(IndexDef).filter_by(
-                # index_name="column").one().index_id
                 maindata.index_id = column
                 maindata.op_time = period
                 df = df.reset_index()
-                # TODO 得到上一期的op_time
-                maindata.last_period = df['OP_TIME'].iloc[df.index[df['OP_TIME'] == period] - 1].item()
-                # maindata.true_value = df[column].iloc[df.index[df['OP_TIME']==period] - 1 ].item()
-                maindata.true_value = df[column].iloc[df.index[df['OP_TIME'] == period]].item()
+                maindata.last_period = df['OP_TIME'].iloc[df.index[df['OP_TIME'] == int(period)] - 1].item()
+                maindata.true_value = df[column].iloc[df.index[df['OP_TIME'] == int(period)]].item()
                 last_period_maindata = self.connector.select_maindata(maindata)
-#                me = self.__get_me(df, last_period_maindata.predict_value)
+                #                me = self.__get_me(df, last_period_maindata.predict_value)
                 df['me'] = me_all
-                me = df['me'].iloc[df.index[df['OP_TIME'] == period] - 1].item()
-#                me = me_all[df.index[df['OP_TIME'] == period][0]]
-                maindata.predict_value = result.item()
+                df['result'] = result
+                me = df['me'].iloc[df.index[df['OP_TIME'] == int(period)] - 1].item()
+                #                me = me_all[df.index[df['OP_TIME'] == period][0]]
+                maindata.predict_value = df['result'].iloc[df.index[df['OP_TIME'] == int(period)]].item()
                 maindata.upper_bound = last_period_maindata.predict_value + me
                 maindata.lower_bound = last_period_maindata.predict_value - me
                 maindata.last_month_value = last_period_maindata.predict_value
@@ -134,9 +125,9 @@ class FactorAnalyser(object):
                 maindata.last_month_true_value = last_period_maindata.true_value
                 if last_period_maindata.true_value != None and last_period_maindata.true_value != 0:
                     maindata.last_month_percentage_difference = maindata.true_value / last_period_maindata.true_value - 1
-                if not df['OP_TIME'].iloc[df.index[df['OP_TIME'] == str((int(period) - 100))]].empty:
+                if not df['OP_TIME'].iloc[df.index[df['OP_TIME'] == (int(period) - 100)]].empty:
                     maindata.last_period = df['OP_TIME'].iloc[
-                        df.index[df['OP_TIME'] == str((int(period) - 100))]].item()
+                        df.index[df['OP_TIME'] == (int(period) - 100)]].item()
                     last_year_maindata = self.connector.select_maindata(maindata)
                     maindata.last_year_value = last_year_maindata.true_value
                     maindata.percentage_difference = maindata.true_value / maindata.last_year_value - 1
@@ -161,12 +152,12 @@ class FactorAnalyser(object):
                     period = df.iloc[len(df) - 1]['OP_TIME']
                     # result = self.__predict_by_model(df, False, period)
                     if i == 0:
-#                        me = self.__get_me(df, result[i])
+                        #                        me = self.__get_me(df, result[i])
                         me = me_all[i]
                     else:
                         me = me_all[i - 1]
                         if me == None:
-                            me = result[i]*0.1
+                            me = result[i] * 0.1
                     maindata = MainData()
                     maindata.index_id = column
                     maindata.op_time = str(row['OP_TIME'])[:-2]
@@ -180,14 +171,15 @@ class FactorAnalyser(object):
                         # 把上月真实值赋值并更新
                         maindata.last_month_true_value = last_month_true_value
                         last_month_true_value = maindata.true_value
-                        maindata.last_month_percentage_difference = (maindata.true_value / maindata.last_month_true_value) - 1
+                        maindata.last_month_percentage_difference = (
+                                                                        maindata.true_value / maindata.last_month_true_value) - 1
                         if not df[column].iloc[df.index[df['OP_TIME'] == (int(row['OP_TIME'] - 100))]].empty:
-                            # print(row['OP_TIME']-100)
-                            maindata.last_year_value = df[column].iloc[df.index[df['OP_TIME'] == (int(row['OP_TIME'] - 100))]].item()
+                            maindata.last_year_value = df[column].iloc[
+                                df.index[df['OP_TIME'] == (int(row['OP_TIME'] - 100))]].item()
                             maindata.percentage_difference = maindata.true_value / maindata.last_year_value - 1
                     maindata.upper_bound = float(result[i - 1] + me)
                     maindata.lower_bound = float(result[i - 1] - me)
-                
+
                     if maindata.true_value > maindata.upper_bound:
                         maindata.description = '>上限值'
                         maindata.is_abnormal = 1
@@ -201,14 +193,12 @@ class FactorAnalyser(object):
                     maindata_list.append(maindata)
                     i = i + 1
 
-            # return maindata_list
-
             self.__add_to_database(maindata_list, init)
             print('Added {} to database'.format(column))
 
     def __modeling(self, data):
         """
-
+        计算影响因子方法
         :param data:
         :return:  因素名称和影响因子的字典
         """
@@ -239,9 +229,8 @@ class FactorAnalyser(object):
         scores_ndarray = np.asarray(scores)
         best_model = lasso_models[scores_ndarray.argmax()]
         cv_result = model_selection.cross_val_score(best_model, poly_X, y, cv=kf, scoring='neg_mean_squared_error')
-        print ('the mean neg_mse_score for LassoRegression is %s' % (np.mean(np.asarray(cv_result))))
+        print('the mean neg_mse_score for LassoRegression is %s' % (np.mean(np.asarray(cv_result))))
         # 得到系数的list
-        # factors = np.square(np.asarray(best_model.coef_))
         factors = np.abs(np.asarray(best_model.coef_))
         # 得到影响因子
         influence = factors / np.sum(factors)
@@ -249,10 +238,16 @@ class FactorAnalyser(object):
         # 格式化一下小数,输出两位小数
         formatted_influence = map(lambda x: '%.2f' % x, influence)
         named_scores = zip(poly_X.columns, formatted_influence)
-        # sorted_named_scores = sorted(named_scores, key=lambda influence: influence[1], reverse=True)
         return dict(named_scores)
 
     def __save_result(self, dic, period, init):
+        """
+        把影响因子保存起来
+        :param dic:  影响因子的字典.key是影响因子名,value是值
+        :param period: 期间
+        :param init: 是否是初始化操作
+        :return:
+        """
         _list = []
         for key, value in dic.items():
             r = Relation()
@@ -266,6 +261,12 @@ class FactorAnalyser(object):
         return _list
 
     def __save_second_level(self, period, init):
+        """
+        保存第二层影响因子的关系
+        :param period:
+        :param init:
+        :return:
+        """
         list_parent = []  # 和父节点
         list_root_second = []  # 和根节点
         for key, value in self._level_two_factor_id.items():
@@ -288,12 +289,6 @@ class FactorAnalyser(object):
                 root.is_leaf = 1
                 list_root_second.append(root)
         return list_parent, list_root_second
-
-    def __predict_by_model(self, data, init, period):
-        # if init:
-        #     return data
-        # else:
-        return self.__predict_by_LSTM(data, period, init)
 
     def __predict_by_LSTM(self, data, period, init):
         sys.setrecursionlimit(1048576)
@@ -350,8 +345,6 @@ class FactorAnalyser(object):
         model.add(Dense(1))
         model.compile(loss='mean_squared_error', optimizer=optimizer)
         model.fit(trainX, trainY, nb_epoch=nb_epoch, batch_size=1, verbose=2)
-        #        model = load_model('my.h5')
-        # t_0 = data[column_name][data['OP_TIME'] == period].item()  # 要预测的那一期
 
         # if init:
         predict_value = scaler.inverse_transform(model.predict(dataset.reshape(len(dataset), 1, 1)))
@@ -365,8 +358,8 @@ class FactorAnalyser(object):
         sess.run(tf.global_variables_initializer())
         for input in dataset.flatten():
             trainingExample = np.array([[[input]]])
-#            sess = tf.InteractiveSession()
-#            sess.run(tf.global_variables_initializer())
+            #            sess = tf.InteractiveSession()
+            #            sess.run(tf.global_variables_initializer())
             evaluated_gradients = sess.run(gradients, feed_dict={model.input: trainingExample})  # 是一个ndarray的list
             gradients_1d = [e.flatten() for e in evaluated_gradients]  # 1d的ndarray数组
             all_param = tuple(gradients_1d)  # 1d的 ndarray 元组
@@ -379,79 +372,78 @@ class FactorAnalyser(object):
         s = (1. / len(dataset)) * np.sqrt(mean_squared_error(scaler.inverse_transform(y_true), y_predict))
         t_score = scipy.stats.t.isf(0.1 / 2, df=(len(dataset)))
         matF = np.mat(F)
-        me = s*t_score*np.sqrt(np.diag((matF.dot(np.linalg.pinv(matF.T.dot(matF))).dot(matF.T) + 1)))
-        #me = me[:-1]
+        me = s * t_score * np.sqrt(np.diag((matF.dot(np.linalg.pinv(matF.T.dot(matF))).dot(matF.T) + 1)))
+
         return predict_value, me
-        # else:
-        #     data['OP_TIME'] = data['OP_TIME'].apply(str)
-        #     t_0 = data.loc[data['OP_TIME'] == period, column_name]
-        #     t_0 = scaler.transform(t_0.reshape(-1,1))
-        #     predict_value = model.predict(t_0.reshape(1, 1, 1))
-        #     return scaler.inverse_transform(predict_value)
 
     def __add_to_database(self, result, init):
         self.connector.add_data(result)
-        # if init:
-        #     pass
-        # else:
-        #     maindata = MainData()
-        #     # maindata.index_pk_id =
 
     def __get_me(self, df, prediction):
         return prediction * 0.1
 
 
-class BillUserAnalyser(FactorAnalyser):
-    _target = ['ZB1001001']
-    _factor_index_id = ['ZB1001101',
-                        'ZB1001102',
-                        'ZB1001103',
-                        'ZB1001104',
-                        'ZB1001105']
-    _level_two_factor_id = {}
+# class BillUserAnalyser(FactorAnalyser):
+#     _target = ['ZB1001001']
+#     _factor_index_id = ['ZB1001101',
+#                         'ZB1001102',
+#                         'ZB1001103',
+#                         'ZB1001104',
+#                         'ZB1001105']
+#     _level_two_factor_id = {}
+#
+#
+# class NetBillUserAnalyser(FactorAnalyser):
+#     _target = ['ZB1001002']
+#     _factor_index_id = ['ZB1001106',
+#                         'ZB1001107',
+#                         'ZB1001108']
+#     _level_two_factor_id = {
+#         'ZB1001106': [],
+#         'ZB1001107': ['ZB1001101',
+#                       'ZB1001102',
+#                       'ZB1001103',
+#                       'ZB1001104',
+#                       'ZB1001105',
+#                       'ZB1001206',
+#                       'ZB1001207'],
+#         'ZB1001108': ['ZB1001101',
+#                       'ZB1001102',
+#                       'ZB1001103',
+#                       'ZB1001104',
+#                       'ZB1001105',
+#                       'ZB1001206',
+#                       'ZB1001207']
+#     }  # {'index1':[index1-a,index1-b],'index2':[index2-a,index2-b]}
+#
+#
+# class FeeAnalyser(FactorAnalyser):
+#     _target = ['ZB1001003']
+#     _factor_index_id = ['ZB1001301',
+#                         'ZB1001302',
+#                         'ZB1001303',
+#                         'ZB1001304',
+#                         'ZB1001305',
+#                         'ZB1001306']
+#     _level_two_factor_id = {}
 
 
-class NetBillUserAnalyser(FactorAnalyser):
-    _target = ['ZB1001002']
-    _factor_index_id = ['ZB1001106',
-                        'ZB1001107',
-                        'ZB1001108']
-    _level_two_factor_id = {
-        'ZB1001106': [],
-        'ZB1001107': ['ZB1001101',
-                      'ZB1001102',
-                      'ZB1001103',
-                      'ZB1001104',
-                      'ZB1001105',
-                      'ZB1001206',
-                      'ZB1001207'],
-        'ZB1001108': ['ZB1001101',
-                      'ZB1001102',
-                      'ZB1001103',
-                      'ZB1001104',
-                      'ZB1001105',
-                      'ZB1001206',
-                      'ZB1001207']
-    }  # {'index1':[index1-a,index1-b],'index2':[index2-a,index2-b]}
+class DefaultAnalyser(FactorAnalyser):
+    def __init__(self, index_id):
+        self._target = [index_id]
+        self._factor_index_id = relation[index_id].keys()
+        if np.sum([len(r) for r in relation[index_id].values()]) == 0:
+            self._level_two_factor_id = {}
+        else:
+            self._level_two_factor_id = relation[index_id]
 
 
-class FeeAnalyser(FactorAnalyser):
-    _target = ['ZB1001003']
-    _factor_index_id = ['ZB1001301',
-                        'ZB1001302',
-                        'ZB1001303',
-                        'ZB1001304',
-                        'ZB1001305',
-                        'ZB1001306']
-    _level_two_factor_id = {}
-
-
-class FactorAnalyserFactory(object):
-    @classmethod
-    def get_analyser(cls, index_id):
-        if index_id == 'ZB1001001':
-            return BillUserAnalyser()
-        elif index_id == 'ZB1001002':
-            return NetBillUserAnalyser()
-        elif index_id == 'ZB1001003':
-            return FeeAnalyser()
+# class FactorAnalyserFactory(object):
+#     @classmethod
+#     def get_analyser(cls, index_id):
+#         if index_id == 'ZB1001001':
+#             return BillUserAnalyser()
+#         elif index_id == 'ZB1001002':
+#             return NetBillUserAnalyser()
+#         elif index_id == 'ZB1001003':
+#             return FeeAnalyser()

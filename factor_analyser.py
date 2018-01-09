@@ -116,12 +116,15 @@ class FactorAnalyser(object):
                 df['me'] = me_all
                 df['result'] = result
                 me = df['me'].iloc[df.index[df['OP_TIME'] == int(period)] - 1].item()
+                
                 #                me = me_all[df.index[df['OP_TIME'] == period][0]]
                 maindata.predict_value = df['result'].iloc[df.index[df['OP_TIME'] == int(period)]].item()
                 maindata.upper_bound = last_period_maindata.predict_value + me
                 maindata.lower_bound = last_period_maindata.predict_value - me
                 maindata.last_month_value = last_period_maindata.predict_value
-
+                # 有时候程序运行的结果会出现None,原因未知,为了防止报错,替换为预测值的10%
+                if me == None:
+                    me = maindata.last_month_value * 0.1
                 maindata.last_month_true_value = last_period_maindata.true_value
                 if last_period_maindata.true_value != None and last_period_maindata.true_value != 0:
                     maindata.last_month_percentage_difference = maindata.true_value / last_period_maindata.true_value - 1
@@ -325,19 +328,18 @@ class FactorAnalyser(object):
         将数据转换成模型需要的形状，X=t and Y=t+1
         """
         look_back = 1
-        # from set_super_parameter import look_back
+
         trainX, trainY = create_dataset(train, look_back)
-        # testX, testY = create_dataset(test, look_back)
+
         """
         将数据转换成模型需要的形状，[样本samples,时间步 time steps, 特征features]
         """
         trainX = np.reshape(trainX, (trainX.shape[0], 1, trainX.shape[1]))
-        # testX = numpy.reshape(testX, (testX.shape[0], 1, testX.shape[1]))
-        # textX = numpt.
+
         """
         搭建LSTM神经网络
         """
-        sample = 3
+        sample = 2
         nb_epoch = 100
         optimizer = 'adam'
         model = Sequential()
@@ -369,8 +371,8 @@ class FactorAnalyser(object):
         F = np.vstack(tuple(F_list))
         y_true = dataset[1:]
         y_predict = predict_value[:-1]
-        s = (1. / len(dataset)) * np.sqrt(mean_squared_error(scaler.inverse_transform(y_true), y_predict))
-        t_score = scipy.stats.t.isf(0.1 / 2, df=(len(dataset)))
+        s = (1. / (len(dataset)-len(F[0]))) * np.sqrt(mean_squared_error(scaler.inverse_transform(y_true), y_predict))
+        t_score = scipy.stats.t.isf(0.1 / 2, df= len(dataset)-len(F[0]))
         matF = np.mat(F)
         me = s * t_score * np.sqrt(np.diag((matF.dot(np.linalg.pinv(matF.T.dot(matF))).dot(matF.T) + 1)))
 

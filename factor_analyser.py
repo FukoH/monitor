@@ -11,7 +11,8 @@ from keras.layers import Dense
 from keras.layers import LSTM
 from sklearn.preprocessing import MinMaxScaler
 from relation import relation
-
+from logger.config import config
+import logging
 from po.PO import MainData
 from po.PO import Relation
 from DB.DBConnector import DBConnector
@@ -22,7 +23,8 @@ class FactorAnalyser(object):
     _factor_index_id = []
     _level_two_factor_id = {}  # {'index1':[index1-a,index1-b],'index2':[index2-a,index2-b]}
     connector = DBConnector()
-
+    logging.config.dictConfig(config)
+    _logger = logging.getLogger('simple')
     def analyse(self, period, init):
         """
         分析主方法
@@ -32,8 +34,10 @@ class FactorAnalyser(object):
         """
         # load data
         first_level_data, second_level_data = self.__get_data_by_period(period)
+        self._logger.info("raw data has been successfully loaded")
         # predict
         self.__predict(second_level_data, period, init)
+        self._logger.info('prediction has been finished')
         # calculate factor
         dic = self.__modeling(first_level_data)
         _list = self.__save_result(dic, period, init)
@@ -181,7 +185,7 @@ class FactorAnalyser(object):
                     i = i + 1
 
             self.__add_to_database(maindata_list, init)
-            print('Added {} to database'.format(column))
+            self._logger.info('Added {} to database'.format(column))
 
     def __modeling(self, data):
         """
@@ -199,12 +203,12 @@ class FactorAnalyser(object):
         y = data[self._target[0]]
         kf = TimeSeriesSplit(n_splits=3)
         kf.get_n_splits(poly_X)
-        print("start trainning model...")
+        self._logger.info("start trainning model to explain relationship")
         # nested 3-fold TimeSeries cross-validation
         scores = []
         lasso_models = []
         for train_index, test_index in kf.split(poly_X):
-            print("finding relatively better alpha...")
+            self._logger.info("finding relatively better alpha...")
             X_train, X_test = poly_X.iloc[train_index], poly_X.iloc[test_index]
             y_train, y_test = y.iloc[train_index], y.iloc[test_index]
             lassocv = linear_model.LassoCV(cv=10, max_iter=1500)
@@ -216,7 +220,7 @@ class FactorAnalyser(object):
         scores_ndarray = np.asarray(scores)
         best_model = lasso_models[scores_ndarray.argmax()]
         cv_result = model_selection.cross_val_score(best_model, poly_X, y, cv=kf, scoring='neg_mean_squared_error')
-        print('the mean neg_mse_score for LassoRegression is %s' % (np.mean(np.asarray(cv_result))))
+        self._logger.info('the mean neg_mse_score for LassoRegression is %s' % (np.mean(np.asarray(cv_result))))
         # 得到系数的list
         factors = np.abs(np.asarray(best_model.coef_))
         # 得到影响因子

@@ -6,10 +6,12 @@ from sqlalchemy.orm import sessionmaker
 
 
 from po.PO import MainData
+from DB.config import db_develop
 from DB.config import db
 
-
 class DBConnector:
+    # engine = create_engine('mysql+mysqlconnector://%s:%s@%s:3306/%s' % (
+    #     db_develop['user'], db_develop['password'], db_develop['host'], db_develop['base']))
     engine = create_engine('mysql+mysqlconnector://%s:%s@%s:3306/%s' % (
         db['user'], db['password'], db['host'], db['base']))
     # 创建DBSession类型:

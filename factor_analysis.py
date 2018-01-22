@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*
 
 import argparse
-
+from logger.config import config
+import logging
 from factor_analyser import DefaultAnalyser
 
 parser = argparse.ArgumentParser(description='Prediction intervals and influencing factor analysis.')
@@ -21,6 +22,9 @@ if args.a:
 else:
     ids = args.index_id
 
+logging.config.dictConfig(config)
+logger = logging.getLogger('simple')
 for index_id in ids:
+    logger.info("start processing {}".format(index_id))
     analyser = DefaultAnalyser(index_id)
     analyser.analyse(period=args.period, init=args.init)

@@ -18,4 +18,13 @@ db_develop = {
     'base':'develop'
 }
 
+local = {
+    'host': '127.0.0.1',
+    'port': 3306,
+    'password': 'root',
+    'user': 'root',
+    'base':'online'
+}
+#################################################
 
+config = db

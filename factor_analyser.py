@@ -48,7 +48,7 @@ class FactorAnalyser(object):
             _list.extend(list_root)
         self.connector.add_data(_list)
 
-    def __get_data_from_csv(self, path=r'./data/raw_data.csv'):
+    def __get_data_from_csv(self, path=r'./data/raw_data_18.csv'):
         """
         从原始的excel把数据转成关系型
         :param path:
@@ -84,8 +84,9 @@ class FactorAnalyser(object):
         first_level, second_level = self.__get_data_from_csv()
         fisrst_level_series = first_level[(first_level['OP_TIME'] <= period) & (first_level['OP_TIME'] >= 201303)]
         second_level_series = second_level[(second_level['OP_TIME'] <= period) & (second_level['OP_TIME'] >= 201303)]
-        fisrst_level_series = fisrst_level_series.dropna()
-        second_level_series = second_level_series.dropna()
+        fisrst_level_series = fisrst_level_series.dropna(axis=1, how='all').interpolate().fillna('bfill')
+        second_level_series = second_level_series.dropna(axis=1, how='all').interpolate().fillna('bfill')
+
 
         return fisrst_level_series, second_level_series
 

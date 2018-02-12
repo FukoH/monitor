@@ -19,11 +19,11 @@ db_develop = {
 }
 
 local = {
-    'host': '127.0.0.1',
+    'host': '10.62.242.137',
     'port': 3306,
-    'password': 'root',
-    'user': 'root',
-    'base':'online'
+    'password': 'monitor_fx123',
+    'user': 'monitor_fx',
+    'base':'monitor_fx'
 }
 #################################################
 

@@ -5,6 +5,7 @@ import argparse
 from logger.config import config
 import logging
 from factor_analyser import DefaultAnalyser
+from relation import all_index_ids
 
 parser = argparse.ArgumentParser(description='Prediction intervals and influencing factor analysis.')
 group = parser.add_mutually_exclusive_group(required=True)
@@ -15,7 +16,7 @@ parser.add_argument('--init', action='store_true', help='discard old model, then
 args = parser.parse_args()
 # print args
 # 目标指标列表
-all_index_ids = ['ZB1001001', 'ZB1001002', 'ZB1001003']
+# all_index_ids = ['ZB1001001', 'ZB1001002', 'ZB1001003']
 
 if args.a:
     ids = all_index_ids

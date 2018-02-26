@@ -185,7 +185,7 @@ class FactorAnalyser(object):
                     maindata_list.append(maindata)
                     i = i + 1
 
-            self.__add_to_database(maindata_list, init)
+            self.__insert_ignore(maindata_list)
             self._logger.info('Added {} to database'.format(column))
 
     def __modeling(self, data):
@@ -344,6 +344,9 @@ class FactorAnalyser(object):
 
     def __add_to_database(self, result, init):
         self.connector.add_data(result)
+
+    def __insert_ignore(self,result):
+        self.connector.insert_ignore(result)
 
     def __get_me(self, prediction):
         return prediction * 0.05

@@ -6,10 +6,13 @@ import numpy as np
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn import linear_model, model_selection
 import sys
+import math
+import scipy.stats
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import LSTM
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.metrics import mean_squared_error
 from relation import relation
 from logger.config import config
 import logging
@@ -101,7 +104,7 @@ class FactorAnalyser(object):
             df = df.sort_values('OP_TIME')
             df = df.reset_index()
             df = df.drop(['index'], axis=1)
-            result = self.__predict_by_LSTM(df, init, period)
+            result, me_all = self.__predict_by_LSTM(df, init, period)
 
             if not init:
 
@@ -112,13 +115,18 @@ class FactorAnalyser(object):
                 maindata.last_period = df['OP_TIME'].iloc[df.index[df['OP_TIME'] == int(period)] - 1].item()
                 maindata.true_value = df[column].iloc[df.index[df['OP_TIME'] == int(period)]].item()
                 last_period_maindata = self.connector.select_maindata(maindata)
+                df['me'] = me_all
                 df['result'] = result
-                me = self.__get_me(last_period_maindata.predict_value)
+                me = df['me'].iloc[df.index[df['OP_TIME'] == int(period)] - 1].item()
+
+                #                me = me_all[df.index[df['OP_TIME'] == period][0]]
                 maindata.predict_value = df['result'].iloc[df.index[df['OP_TIME'] == int(period)]].item()
                 maindata.upper_bound = last_period_maindata.predict_value + me
                 maindata.lower_bound = last_period_maindata.predict_value - me
                 maindata.last_month_value = last_period_maindata.predict_value
-
+                # 有时候程序运行的结果会出现None,原因未知,为了防止报错,替换为预测值的10%
+                if me == None:
+                    me = maindata.last_month_value * 0.1
                 maindata.last_month_true_value = last_period_maindata.true_value
                 if last_period_maindata.true_value != None and last_period_maindata.true_value != 0:
                     maindata.last_month_percentage_difference = maindata.true_value / last_period_maindata.true_value - 1
@@ -147,9 +155,11 @@ class FactorAnalyser(object):
                 for index, row in df.iterrows():
                     period = df.iloc[len(df) - 1]['OP_TIME']
                     if i == 0:
-                        me = self.__get_me(result[i])
+                        me = me_all[i]
                     else:
-                        me = self.__get_me(result[i - 1])
+                        me = me_all[i - 1]
+                        if me == None:
+                            me = result[i] * 0.1
                     maindata = MainData()
                     maindata.index_id = column
                     maindata.op_time = str(row['OP_TIME'])[:-2]
@@ -323,7 +333,7 @@ class FactorAnalyser(object):
         """
         将数据转换成模型需要的形状，[样本samples,时间步 time steps, 特征features]
         """
-        trainX = np.reshape(trainX, (trainX.shape[0], 1, trainX.shape[1]))
+        trainX_net = np.reshape(trainX, (trainX.shape[0], 1, trainX.shape[1]))
 
         """
         搭建LSTM神经网络
@@ -335,12 +345,24 @@ class FactorAnalyser(object):
         model.add(LSTM(sample, input_dim=look_back))
         model.add(Dense(1))
         model.compile(loss='mean_squared_error', optimizer=optimizer)
-        model.fit(trainX, trainY, nb_epoch=nb_epoch, batch_size=1, verbose=2)
+        model.fit(trainX_net, trainY, nb_epoch=nb_epoch, batch_size=1, verbose=2)
 
         # if init:
         predict_value = scaler.inverse_transform(model.predict(dataset.reshape(len(dataset), 1, 1)))
 
-        return predict_value
+        y_true = dataset[1:]
+        y_predict = predict_value[:-1]
+        trainScore = math.sqrt(mean_squared_error(y_true, y_predict))
+        MSE = math.pow(trainScore, 2)
+        # X = scaler.inverse_transform(trainX)
+        X = scaler.inverse_transform(dataset)
+        X = X.flatten()
+        X_bar = X.mean()
+        s_star = np.sqrt(MSE * (1. / len(X) +1+ np.power((X - X_bar), 2) / np.sum(np.power((X - X_bar), 2))))
+        t_score = scipy.stats.t.isf(0.05 / 2, df=(len(X) - 2))
+        me = t_score * s_star
+
+        return predict_value,me
 
     def __add_to_database(self, result, init):
         self.connector.add_data(result)

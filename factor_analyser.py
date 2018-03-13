@@ -155,7 +155,7 @@ class FactorAnalyser(object):
                 for index, row in df.iterrows():
                     period = df.iloc[len(df) - 1]['OP_TIME']
                     if i == 0:
-                        me = me_all[i]
+                        me = result[i] * 0.1
                     else:
                         me = me_all[i - 1]
                         if me == None:
@@ -352,7 +352,7 @@ class FactorAnalyser(object):
 
         y_true = dataset[1:]
         y_predict = predict_value[:-1]
-        trainScore = math.sqrt(mean_squared_error(y_true, y_predict))
+        trainScore = math.sqrt(mean_squared_error(scaler.inverse_transform(y_true), y_predict))
         MSE = math.pow(trainScore, 2)
         # X = scaler.inverse_transform(trainX)
         X = scaler.inverse_transform(dataset)
